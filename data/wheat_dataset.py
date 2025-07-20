@@ -110,9 +110,6 @@ class WheatDataset(Dataset):
             elif not grid_tensor[grid_y_index, grid_x_index, 5]:
                 grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
 
-        # Convert to tensor
-        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
-
         return image, grid_tensor
 
     def get_raw_item(self, idx):

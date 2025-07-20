@@ -13,7 +13,6 @@ def get_train_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2
         A.ToTensorV2()
     ], bbox_params=A.BboxParams(
         format='coco',
-        label_fields=['labels'],
         min_visibility=0.1
     ))
 
@@ -26,6 +25,5 @@ def get_val_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.206
         A.ToTensorV2()
     ], bbox_params=A.BboxParams(
         format='coco',
-        label_fields=['labels'],
         min_visibility=0.1
     ))
