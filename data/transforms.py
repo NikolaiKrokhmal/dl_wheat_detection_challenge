@@ -1,7 +1,7 @@
 import albumentations as A
 
 
-def get_train_transforms(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), img_size=448):
+def get_train_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2061), img_size=448):
     """Training augmentations using Albumentations (your original)"""
     return A.Compose([
         A.HorizontalFlip(p=0.5),
@@ -12,20 +12,20 @@ def get_train_transforms(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), 
         A.Normalize(mean, std),
         A.ToTensorV2()
     ], bbox_params=A.BboxParams(
-        format='pascal_voc',
+        format='coco',
         label_fields=['labels'],
         min_visibility=0.1
     ))
 
 
-def get_val_transforms(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), img_size=448):
+def get_val_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2061), img_size=448):
     """Validation transforms (no augmentation) (your original)"""
     return A.Compose([
         A.Resize(height=img_size, width=img_size),
         A.Normalize(mean, std),
         A.ToTensorV2()
     ], bbox_params=A.BboxParams(
-        format='pascal_voc',
+        format='coco',
         label_fields=['labels'],
         min_visibility=0.1
     ))

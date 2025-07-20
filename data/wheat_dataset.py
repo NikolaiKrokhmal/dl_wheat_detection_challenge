@@ -20,7 +20,7 @@ class WheatDataset(Dataset):
     bbox format in CSV: [x_min, y_min, width, height] (Pascal VOC format)
     """
 
-    def __init__(self, data_dir, csv_file, apply_mosaic, transforms=None, img_size=640):
+    def __init__(self, data_dir, csv_file, apply_mosaic, transforms=None, img_size=448):
         """
         Args:
             data_dir (str): Path to the data directory containing images
@@ -65,95 +65,55 @@ class WheatDataset(Dataset):
         img_annotations = self.df[self.df['image_id'] == image_id]
 
         boxes = []
-        labels = []
-        areas = []
 
         for _, row in img_annotations.iterrows():
             bbox = row['bbox']  # [x_min, y_min, width, height]
-
-            # Convert to [x_min, y_min, x_max, y_max] format
-            x_min, y_min, width, height = bbox
-            x_max = x_min + width
-            y_max = y_min + height
-
-            # Ensure coordinates are within image bounds
-            img_height, img_width = image.shape[:2]
-            x_min = max(0, min(x_min, img_width - 1))
-            y_min = max(0, min(y_min, img_height - 1))
-            x_max = max(x_min + 1, min(x_max, img_width))
-            y_max = max(y_min + 1, min(y_max, img_height))
-
-            # Skip invalid boxes
-            if x_max <= x_min or y_max <= y_min:
-                continue
-
-            boxes.append([x_min, y_min, x_max, y_max])
-            labels.append(1)  # All wheat (class 1, background is 0)
-            areas.append((x_max - x_min) * (y_max - y_min))
+            x, y, w, h = bbox
+            boxes.append([x, y, w, h, 1])
 
         # Convert to numpy arrays for albumentations
         boxes = np.array(boxes, dtype=np.float32)
-        labels = np.array(labels, dtype=np.int64)
-        areas = np.array(areas, dtype=np.float32)
 
-        # FIXED: Apply mosaic augmentation and get updated labels
-        if self.apply_mosaic:
-            image, boxes, labels = self.mosaic_augmentation(image, boxes, labels, p=1)
+        if self.apply_mosaic: #TODO: modify mosaic augmentation for new coordinates
+            image, boxes = self.mosaic_augmentation(image, boxes, p=1)
 
         # Apply transforms if specified
         if self.transforms:
-            # Albumentations expects boxes in [x_min, y_min, x_max, y_max] format
             sample = self.transforms(
                 image=image,
                 bboxes=boxes,
-                labels=labels
             )
             image = sample['image']
-            boxes = np.array(sample['bboxes'], dtype=np.float32)
-            labels = np.array(sample['labels'], dtype=np.int64)  # Update labels from transforms
-        else:
-            # Default resize if no transforms
-            img_height, img_width, _ = image.shape
-            image = cv2.resize(image, (self.img_size, self.img_size))
-            # Scale boxes to new image size
-            scale_x = self.img_size / img_width
-            scale_y = self.img_size / img_height
-            boxes = np.asarray(boxes)
-            boxes[:, [0, 2]] *= scale_x  # x coordinates
-            boxes[:, [1, 3]] *= scale_y  # y coordinates
-            boxes = list(boxes)
+            boxes = np.array(sample['bboxes'], dtype=np.float32) # [x_min, y_min. w, h]
 
-            # Convert to tensor
-            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+        grid_tensor = torch.zeros(7, 7, 11)
 
-        yolo_boxes = []
-        for bbox in boxes:
-            # boxes is now in [x_min, y_min, x_max, y_max] format after transforms
-            x_min, y_min, x_max, y_max = bbox
+        # Normalize bboxes for YOLO
+        for box in boxes:
+            x, y, w, h, c = box
 
-            # Calculate center and dimensions
-            x_center = (x_min + x_max) / 2
-            y_center = (y_min + y_max) / 2
-            width = x_max - x_min
-            height = y_max - y_min
+            x_center = (x + w / 2)  #  x_center
+            y_center = (y + h / 2)  #  y_center
 
-            # Normalize by image dimensions (always 640x640)
-            x_center_norm = x_center / 640.0
-            y_center_norm = y_center / 640.0
-            width_norm = width / 640.0
-            height_norm = height / 640.0
+            cell_size = self.img_size / 7
 
-            # Create YOLO format: [class, x_center, y_center, width, height]
-            yolo_box = [0, x_center_norm, y_center_norm, width_norm, height_norm]  # class=0 for wheat
-            yolo_boxes.append(yolo_box)
+            grid_x_index = int(x_center / cell_size)
+            grid_y_index = int(y_center / cell_size)
 
-        # Convert to tensor for final output
-        boxes_tensor = torch.tensor(yolo_boxes, dtype=torch.float32) if yolo_boxes else torch.empty(0, 5)
+            delta_x = (x_center % cell_size) / cell_size
+            delta_y = (y_center % cell_size) / cell_size
+            delta_h = h / self.img_size
+            delta_w = w / self.img_size
 
-        # Create target dictionary (simplified for YOLO format)
-        targets = torch.tensor(yolo_boxes, dtype=torch.float32) if yolo_boxes else torch.empty(0, 5)
+            if not grid_tensor[grid_y_index, grid_x_index, 0]:
+                grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
+            elif not grid_tensor[grid_y_index, grid_x_index, 5]:
+                grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
 
-        return image, targets
+        # Convert to tensor
+        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+
+        return image, grid_tensor
 
     def get_raw_item(self, idx):
         """
@@ -204,7 +164,7 @@ class WheatDataset(Dataset):
             'labels': labels
         }
 
-    def mosaic_augmentation(self, image, boxes, labels, p=1):
+    def mosaic_augmentation(self, image, boxes, p=1):
         """
         Apply mosaic augmentation by combining 4 images in a 2x2 grid
 

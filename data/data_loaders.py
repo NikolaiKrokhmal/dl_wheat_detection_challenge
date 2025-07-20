@@ -54,7 +54,7 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         shuffle=True,
         num_workers=4,
         pin_memory=True,
-        collate_fn=collate_fn,
+        # collate_fn=collate_fn,
         drop_last=True
     )
 
@@ -64,7 +64,7 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         shuffle=True,
         num_workers=4,
         pin_memory=True,
-        collate_fn=collate_fn,
+        # collate_fn=collate_fn,
         drop_last=True
     )
 
@@ -74,7 +74,7 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         shuffle=False,
         num_workers=4,
         pin_memory=True,
-        collate_fn=collate_fn,
+        # collate_fn=collate_fn,
         drop_last=True
     )
 
