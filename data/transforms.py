@@ -1,7 +1,7 @@
 import albumentations as A
 
 
-def get_train_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2061), img_size=448):
+def get_train_transforms(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), img_size=448):
     """Training augmentations using Albumentations (your original)"""
     return A.Compose([
         A.HorizontalFlip(p=0.5),
@@ -18,7 +18,7 @@ def get_train_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2
     ))
 
 
-def get_val_transforms(mean=(0.2140, 0.3170, 0.3142), std=(0.1747, 0.2089, 0.2061), img_size=448):
+def get_val_transforms(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), img_size=448):
     """Validation transforms (no augmentation) (your original)"""
     return A.Compose([
         A.Resize(height=img_size, width=img_size),
