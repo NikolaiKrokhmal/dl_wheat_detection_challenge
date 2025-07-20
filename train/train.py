@@ -1,6 +1,7 @@
 import torch
 from tqdm import tqdm
 
+
 def train(model, train_loader, val_loader, optimizer, criterion, epochs=50, device='cuda'):
     model.to(device)
 

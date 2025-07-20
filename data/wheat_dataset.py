@@ -74,8 +74,6 @@ class WheatDataset(Dataset):
         # Convert to numpy arrays for albumentations
         boxes = np.array(boxes, dtype=np.float32)
 
-        class_labels = [1] * len(boxes)  # assuming all boxes are of class 0
-
         if self.apply_mosaic: #TODO: modify mosaic augmentation for new coordinates
             image, boxes = self.mosaic_augmentation(image, boxes, p=1)
 
@@ -84,7 +82,6 @@ class WheatDataset(Dataset):
             sample = self.transforms(
                 image=image,
                 bboxes=boxes,
-                class_labels=class_labels
             )
             image = sample['image']
             boxes = np.array(sample['bboxes'], dtype=np.float32) # [x_min, y_min. w, h]
@@ -112,9 +109,6 @@ class WheatDataset(Dataset):
                 grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
             elif not grid_tensor[grid_y_index, grid_x_index, 5]:
                 grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
-
-        # Convert to tensor
-        # image = image.permute(2, 0, 1)
 
         return image, grid_tensor
 
