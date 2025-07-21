@@ -9,8 +9,8 @@ if __name__ == "__main__":
     data_dir = './data/train/'
     csv_file = './data/train.csv'
     SEED = 42
-    batch_size = 4
-    epochs = 2
+    batch_size = 8
+    epochs = 5
     img_size = 448
     learning_rate = 1e-4
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -23,7 +23,6 @@ if __name__ == "__main__":
         val_split=0.2,
         seed=SEED
     )
-
 
     # Model
     model = Yolov1(7, 2, 1).to(device)

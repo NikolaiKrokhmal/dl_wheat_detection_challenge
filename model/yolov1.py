@@ -13,6 +13,10 @@ class Yolov1(nn.Module):
 
         # Load pretrained ResNet-18 as backbone
         resnet_pre = models.resnet18(models.ResNet18_Weights.DEFAULT)
+        # Freeze all layers
+        for param in resnet_pre.parameters():
+            param.requires_grad = False
+
         self.backbone = nn.Sequential(*list(resnet_pre.children())[:-2])
 
         # adapt ResNet18 output for yolov1 detection head

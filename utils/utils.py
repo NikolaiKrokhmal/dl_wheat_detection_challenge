@@ -136,6 +136,88 @@ def calculate_iou(box1, box2):
     iou = inter_area / (union_area + 1e-6)
     return iou
 
+def decode_outputs(output, S=7, B=2, C=1, img_size=448, conf_thresh=0.25):
+    boxes = []
+    scores = []
+    labels = []
+
+    cell_size = img_size / S  # e.g., 448/7 = 64
+    for row in range(S):
+        for col in range(S):
+            for b in range(B):
+                # Extract box info
+                bx = output[row,col,b*5]
+                by = output[row,col,b*5+1]
+                bw = output[row,col,b*5+2]
+                bh = output[row,col,b*5+3]
+                conf = output[row,col,b*5+4]
+
+                # CLASS SCORE: last element in the 11-dim vector
+                class_score = output[row, col, B * 5]  # index 10
+
+                # Final confidence = confidence * class probability
+                final_score = conf * class_score
+
+                # Skip low-confidence boxes
+                if final_score < conf_thresh:
+                    continue
+
+                # Convert to image coordinates
+                x_center = (col + bx) * cell_size
+                y_center = (row + by) * cell_size
+                w = bw * img_size
+                h = bh * img_size
+
+                # x1 = x_center - w/2
+                # y1 = y_center - h/2
+                # x2 = x_center + w/2
+                # y2 = y_center + h/2
+
+                boxes.append([x_center,y_center,w,h])
+                scores.append(conf.item())
+                labels.append(1)  # Only 1 class
+
+    return {
+        "boxes": torch.tensor(boxes, dtype=torch.float32),
+        "scores": torch.tensor(scores, dtype=torch.float32),
+        "labels": torch.tensor(labels, dtype=torch.int64)
+    }
+
+def decode_target(target, S=7, img_size=448):
+    boxes = []
+    labels = []
+
+    cell_size = img_size / S
+
+    for row in range(S):
+        for col in range(S):
+            obj = target[row,col,4]  # confidence indicator
+            if obj == 0:
+                continue
+
+            bx = target[row,col,0]
+            by = target[row,col,1]
+            bw = target[row,col,2]
+            bh = target[row,col,3]
+
+            x_center = (col + bx) * cell_size
+            y_center = (row + by) * cell_size
+            w = bw * img_size
+            h = bh * img_size
+
+            x1 = x_center - w / 2
+            y1 = y_center - h / 2
+            x2 = x_center + w / 2
+            y2 = y_center + h / 2
+
+            boxes.append([x1,y1,x2,y2])
+            labels.append(0)  # Only 1 class
+
+    return {
+        "boxes": torch.tensor(boxes, dtype=torch.float32),
+        "labels": torch.tensor(labels, dtype=torch.int64)
+    }
+
 
 if __name__ == '__main__':
     pass

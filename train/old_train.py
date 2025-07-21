@@ -6,16 +6,98 @@ from utils import set_seed
 from model import YOLOv1Loss
 from pathlib import Path
 
+def evaluate_epoch_map(model, dataloader, device, confidence_threshold: float = 0.25,
+                       dataset_name: str = "dataset") -> float:
+    """
+    Fast GPU-accelerated mAP evaluation
+
+    Args:
+        model: PyTorch model (will be set to eval mode automatically)
+        dataloader: DataLoader for the dataset
+        device: Device to run evaluation on
+        confidence_threshold: Minimum confidence for predictions
+        dataset_name: Name for progress bar
+
+    Returns:
+        Mean Average Precision across the entire dataset
+    """
+    was_training = model.training
+    model.eval()
+
+    iou_thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75]
+    all_ap_scores = []
+
+    with torch.no_grad():
+        pbar = tqdm(dataloader, desc=f'Evaluating {dataset_name} mAP')
+
+        for images, targets in pbar:
+            images = images.to(device)
+            targets = targets.to(device)
+
+            # Get model predictions
+            outputs = model(images)
+
+
+
+            processed_output = outputs[0] if isinstance(outputs, tuple) else outputs
+
+            # Fast NMS
+            nms_predictions = non_max_suppression_fast(processed_output, conf_thres=confidence_threshold)
+
+            # Convert ground truth
+            batch_size = len(nms_predictions)
+            ground_truths = targets_to_ground_truth_fast(targets, batch_size)
+
+            # Process each image
+            for img_idx in range(batch_size):
+                pred = nms_predictions[img_idx]
+                gt_list = ground_truths[img_idx]
+
+                # Handle special cases
+                if len(gt_list) == 0:
+                    if len(pred) > 0:
+                        all_ap_scores.append([0.0] * len(iou_thresholds))
+                    continue
+
+                if len(pred) == 0:
+                    all_ap_scores.append([0.0] * len(iou_thresholds))
+                    continue
+
+                # Extract predictions and ground truth
+                pred_boxes = pred[:, :4]  # xyxy format
+                pred_scores = pred[:, 4]
+                gt_boxes = torch.tensor([g['bbox'] for g in gt_list],
+                                        device=device, dtype=torch.float32)
+
+                # Fast AP calculation
+                ap_scores = calculate_ap_vectorized(pred_boxes, pred_scores, gt_boxes, iou_thresholds)
+                all_ap_scores.append(ap_scores)
+
+            # Update progress
+            if all_ap_scores:
+                current_map = torch.tensor(all_ap_scores).mean().item()
+                pbar.set_postfix({'mAP': f'{current_map:.4f}'})
+
+    # Restore training mode
+    if was_training:
+        model.train()
+
+    # Calculate final mAP
+    final_map = torch.tensor(all_ap_scores).mean().item() if all_ap_scores else 0.0
+    print(f'{dataset_name.capitalize()} mAP: {final_map:.4f} (evaluated on {len(all_ap_scores)} images)')
+
+    return final_map
+
 
 def train_single_run(
-    seed,
-    model: torch.nn.Module,
-    train_loader,
-    val_loader,
-    epochs=50,
-    learning_rate=0.001,
-    device='cuda',
-    save_dir='runs/wheat',
+        seed,
+        model: torch.nn.Module,
+        train_loader,
+        val_loader,
+        epochs=50,
+        learning_rate=0.001,
+        device='cuda',
+        save_dir='runs/wheat',
 ):
     """
     Main training function for wheat detection
@@ -43,19 +125,10 @@ def train_single_run(
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0005)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
-    # Mixed precision training
-    scaler = torch.cuda.amp.GradScaler() if device.type == 'cuda' else None
-
     history = {
         'train_loss': [],
-        'train_bbox_loss': [],
-        'train_cls_loss': [],
-        'train_dfl_loss': [],
         'train_mAP': [],
         'val_loss': [],
-        'val_bbox_loss': [],
-        'val_cls_loss': [],
-        'val_dfl_loss': [],
         'val_mAP': []
     }
 
@@ -71,42 +144,27 @@ def train_single_run(
         # Training phase
         model.train()
         train_losses = []
-        train_box_losses = []
-        train_cls_losses = []
-        train_dfl_losses = []
 
-        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs} [Train]')
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch + 1}/{epochs} [Train]')
         for batch_idx, (images, targets) in enumerate(pbar):
             images = images.to(device)
             targets = targets.to(device)
 
             # Forward pass with mixed precision
-            with torch.cuda.amp.autocast(enabled=scaler is not None):
-                outputs = model(images)
-                loss, loss_items = criterion(outputs, targets)
+            outputs = model(images)
+            loss, loss_items = criterion(outputs, targets)
 
             # Backward pass
             optimizer.zero_grad()
-            if scaler:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
+            loss.backward()
+            optimizer.step()
 
             # Record losses
             train_losses.append(loss.item())
-            train_box_losses.append(loss_items[0].item())
-            train_cls_losses.append(loss_items[1].item())
-            train_dfl_losses.append(loss_items[2].item())
 
             # Update progress bar
             pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
-                'box': f'{loss_items[0]:.4f}',
-                'cls': f'{loss_items[1]:.4f}',
-                'dfl': f'{loss_items[2]:.4f}'
+                'loss': f'{loss.item():.4f}'
             })
 
         train_map = 0.0
@@ -117,12 +175,9 @@ def train_single_run(
         # Validation phase
         model.eval()
         val_losses = []
-        val_box_losses = []
-        val_cls_losses = []
-        val_dfl_losses = []
 
         with torch.no_grad():
-            pbar = tqdm(val_loader, desc=f'Epoch {epoch+1}/{epochs} [Val]')
+            pbar = tqdm(val_loader, desc=f'Epoch {epoch + 1}/{epochs} [Val]')
             for images, targets in pbar:
                 images = images.to(device)
                 targets = targets.to(device)
@@ -131,15 +186,9 @@ def train_single_run(
                 loss, loss_items = criterion(outputs, targets)
 
                 val_losses.append(loss.item())
-                val_box_losses.append(loss_items[0].item())
-                val_cls_losses.append(loss_items[1].item())
-                val_dfl_losses.append(loss_items[2].item())
 
                 pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'box': f'{loss_items[0]:.4f}',
-                    'cls': f'{loss_items[1]:.4f}',
-                    'dfl': f'{loss_items[2]:.4f}'
+                    'loss': f'{loss.item():.4f}'
                 })
 
         val_map = 0.0
@@ -150,22 +199,10 @@ def train_single_run(
         # Calculate epoch averages
         avg_train_loss = np.mean(train_losses)
         avg_val_loss = np.mean(val_losses)
-        avg_train_box = np.mean(train_box_losses)
-        avg_train_cls = np.mean(train_cls_losses)
-        avg_train_dfl = np.mean(train_dfl_losses)
-        avg_val_box = np.mean(val_box_losses)
-        avg_val_cls = np.mean(val_cls_losses)
-        avg_val_dfl = np.mean(val_dfl_losses)
 
         # Update history
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
-        history['train_bbox_loss'].append(avg_train_box)
-        history['train_cls_loss'].append(avg_train_cls)
-        history['train_dfl_loss'].append(avg_train_dfl)
-        history['val_bbox_loss'].append(avg_val_box)
-        history['val_cls_loss'].append(avg_val_cls)
-        history['val_dfl_loss'].append(avg_val_dfl)
         history['train_mAP'].append(train_map)
         history['val_mAP'].append(val_map)
 
@@ -174,7 +211,7 @@ def train_single_run(
 
         # Logging
         logging.info(
-            f'Epoch {epoch+1}: '
+            f'Epoch {epoch + 1}: '
             f'Train Loss: {avg_train_loss:.4f} '
             f'[box: {avg_train_box:.4f}, cls: {avg_train_cls:.4f}, dfl: {avg_train_dfl:.4f}] '
             f'Val Loss: {avg_val_loss:.4f} '
@@ -205,7 +242,7 @@ def train_single_run(
 
         # Early stopping
         if patience_counter >= patience:
-            logging.info(f'Early stopping triggered after {epoch+1} epochs')
+            logging.info(f'Early stopping triggered after {epoch + 1} epochs')
             break
 
     # Save final model and history
@@ -216,25 +253,24 @@ def train_single_run(
 
 
 def train_model_3_times(
-    model_type,
-    train_loader,
-    val_loader,
-    random_seeds,
-    epochs=50,
-    learning_rate=0.001,
-    device='cuda',
-    save_dir='runs/wheat',
+        model_type,
+        train_loader,
+        val_loader,
+        random_seeds,
+        epochs=50,
+        learning_rate=0.001,
+        device='cuda',
+        save_dir='runs/wheat',
 ):
-
     list_of_histories = []
     list_of_models = []
 
     for seed in random_seeds:
 
         if model_type == 'YOLOv11-s':
-            model = YOLOv11(nc=1,ch=3)
+            model = YOLOv11(nc=1, ch=3)
         elif model_type == 'MASF-YOLO':
-            model = MASF_YOLOv11(nc=1,ch=3)
+            model = MASF_YOLOv11(nc=1, ch=3)
         else:
             raise ValueError("Options are YOLOv11-s or MASF-YOLO")
         a_model, hist = train_single_run(seed, model, train_loader, val_loader, epochs, learning_rate, device, save_dir)

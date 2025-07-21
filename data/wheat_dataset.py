@@ -102,13 +102,13 @@ class WheatDataset(Dataset):
 
             delta_x = (x_center % cell_size) / cell_size
             delta_y = (y_center % cell_size) / cell_size
-            delta_h = h / self.img_size
             delta_w = w / self.img_size
+            delta_h = h / self.img_size
 
-            if not grid_tensor[grid_y_index, grid_x_index, 0]:
-                grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
-            elif not grid_tensor[grid_y_index, grid_x_index, 5]:
-                grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_h, delta_w, c])
+            if not all(grid_tensor[grid_y_index, grid_x_index, :]):
+                grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_w, delta_h, c])
+                grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_w, delta_h, c])
+                grid_tensor[grid_y_index, grid_x_index, 11] = torch.tensor(1)
 
         return image, grid_tensor
 
