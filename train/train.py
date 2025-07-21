@@ -2,7 +2,8 @@ import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-from .utils import decode_outputs
+from utils import decode_outputs
+
 
 def train(model, train_loader, val_loader, optimizer, criterion, epochs=50, device='cuda'):
     model.to(device)
@@ -110,7 +111,7 @@ def evaluate(model, val_loader, criterion, device='cuda'):
         images = images.to(device)
         targets = targets.to(device)
 
-        predictions = model(images)
+        predictions = model.predict(images)
 
         ############# convert prediction
         preds_list_batch = []
