@@ -6,24 +6,6 @@ import random
 import os
 
 
-def calculate_dataset_stats(dataloader):
-    """Calculate mean and std for your specific dataset"""
-    mean = torch.zeros(3)
-    std = torch.zeros(3)
-    total_samples = 0
-
-    for images, _ in dataloader:
-        batch_samples = images.size(0)
-        images = images.view(batch_samples, images.size(1), -1)
-        mean += images.mean(2).sum(0)
-        std += images.std(2).sum(0)
-        total_samples += batch_samples
-
-    mean /= total_samples
-    std /= total_samples
-    return mean, std
-
-
 def plot_bboxes(image, bboxes, title="Image with Bboxes"):
     """
     Simple function to plot bounding boxes on an image with error handling
@@ -82,29 +64,6 @@ def set_seed(seed):
     # Make PyTorch deterministic (slower but more reproducible)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
-
-def collate_fn(batch):
-    """Custom collate function for YOLO format"""
-    images, targets = tuple(zip(*batch))
-    images = torch.stack(images, 0)
-
-    # Combine all targets with batch indices
-    batch_targets = []
-    for i, target in enumerate(targets):
-        if len(target) > 0:
-            # Add batch index as first column
-            batch_idx = torch.full((len(target), 1), i, dtype=target.dtype)
-            target_with_batch = torch.cat([batch_idx, target], dim=1)
-            batch_targets.append(target_with_batch)
-
-    if batch_targets:
-        targets = torch.cat(batch_targets, 0)  # [total_detections, 6]
-    else:
-        targets = torch.empty(0, 6)
-
-    return images, targets
-
 
 def calculate_iou(box1, box2):
     """Calculate IoU between two sets of boxes."""

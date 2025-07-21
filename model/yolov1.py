@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
+from torchvision.ops import nms
 
 
 class Yolov1(nn.Module):
@@ -78,16 +79,11 @@ class Yolov1(nn.Module):
         return detections
 
 
-def post_process_predictions(predictions, conf_threshold=0.25, nms_threshold=0.5):
+def post_process_predictions(predictions, conf_threshold=0.5, nms_threshold=0.5):
     """
-    Post-process YOLOv1 predictions
-    Args:
-        predictions: (batch_size, S, S, B*5 + C) tensor
-        conf_threshold: confidence threshold for filtering
-        nms_threshold: IoU threshold for NMS
+    Post-process YOLOv1 predictions using torchvision NMS
     """
-    batch_size, S, _, _ = predictions.shape
-
+    batch_size, S, S, _ = predictions.shape
     all_detections = []
 
     for batch_idx in range(batch_size):
@@ -119,7 +115,7 @@ def post_process_predictions(predictions, conf_threshold=0.25, nms_threshold=0.5
                         x2 = x_center + width / 2
                         y2 = y_center + height / 2
 
-                        # Get class with the highest probability
+                        # Get class with highest probability
                         class_conf, class_id = torch.max(class_probs, dim=0)
                         final_conf = conf * class_conf.item()
 
@@ -129,71 +125,93 @@ def post_process_predictions(predictions, conf_threshold=0.25, nms_threshold=0.5
                             'class_id': class_id.item()
                         })
 
-        # Apply NMS
+        # Apply torchvision NMS 🎯
         if detections:
             boxes = torch.tensor([d['bbox'] for d in detections])
             scores = torch.tensor([d['confidence'] for d in detections])
 
+            # Use torchvision NMS - much simpler!
             keep_indices = nms(boxes, scores, nms_threshold)
+
             final_detections = [detections[i] for i in keep_indices]
         else:
             final_detections = []
 
         all_detections.append(final_detections)
 
-    return all_detections
+    return detections_to_tensor(all_detections, batch_size)
 
 
-def nms(boxes, scores, iou_threshold=0.5):
+def apply_nms(boxes, scores, iou_threshold=0.5):
+    """Simple wrapper around torchvision NMS"""
+    return nms(boxes, scores, iou_threshold)
+
+
+def detections_to_tensor(all_detections, batch_size, grid_size=7, num_classes=1):
     """
-    Non-Maximum Suppression
+    Convert post-processed detections back to YOLOv1 tensor format
+
     Args:
-        boxes: (N, 4) tensor [x1, y1, x2, y2]
-        scores: (N,) tensor of confidence scores
-        iou_threshold: IoU threshold for suppression
+        all_detections: List of length batch_size, each containing detection dicts
+        batch_size: Number of images in batch
+        grid_size: Grid size (default 7)
+        num_classes: Number of classes (default 1)
+
     Returns:
-        keep: indices of boxes to keep
+        tensor: Shape [batch_size, grid_size, grid_size, 2*5 + num_classes]
     """
-    if len(boxes) == 0:
-        return torch.empty(0, dtype=torch.long)
+    # Initialize output tensor
+    output_tensor = torch.zeros(batch_size, grid_size, grid_size, 2 * 5 + num_classes)
 
-    # Sort by confidence scores
-    _, indices = scores.sort(descending=True)
+    for batch_idx, detections in enumerate(all_detections):
+        for detection in detections:
+            # Extract detection info
+            bbox = detection['bbox']  # [x1, y1, x2, y2] in [0,1] coordinates
+            confidence = detection['confidence']
+            class_id = detection['class_id']
 
-    keep = []
-    while len(indices) > 0:
-        # Keep the box with the highest confidence
-        current = indices[0]
-        keep.append(current)
+            # Convert [x1, y1, x2, y2] to [x_center, y_center, width, height]
+            x1, y1, x2, y2 = bbox
+            x_center = (x1 + x2) / 2  # Center x in [0,1]
+            y_center = (y1 + y2) / 2  # Center y in [0,1]
+            width = x2 - x1  # Width in [0,1]
+            height = y2 - y1  # Height in [0,1]
 
-        if len(indices) == 1:
-            break
+            # Determine which grid cell this detection belongs to
+            grid_x = int(x_center * grid_size)
+            grid_y = int(y_center * grid_size)
 
-        # Calculate IoU with remaining boxes
-        current_box = boxes[current].unsqueeze(0)
-        remaining_boxes = boxes[indices[1:]]
+            # Clamp to valid grid indices
+            grid_x = max(0, min(grid_x, grid_size - 1))
+            grid_y = max(0, min(grid_y, grid_size - 1))
 
-        ious = calculate_iou_nms(current_box, remaining_boxes)
+            # Convert to YOLOv1 format (relative to grid cell for x,y)
+            cell_x = (x_center * grid_size) - grid_x  # Offset within cell [0,1]
+            cell_y = (y_center * grid_size) - grid_y  # Offset within cell [0,1]
+            # Width and height remain relative to full image [0,1]
 
-        # Keep boxes with IoU < threshold
-        indices = indices[1:][ious < iou_threshold]
+            # Find an available box slot in this grid cell
+            # Check first box slot
+            if output_tensor[batch_idx, grid_y, grid_x, 4] == 0:  # First box available
+                output_tensor[batch_idx, grid_y, grid_x, 0] = cell_x
+                output_tensor[batch_idx, grid_y, grid_x, 1] = cell_y
+                output_tensor[batch_idx, grid_y, grid_x, 2] = width
+                output_tensor[batch_idx, grid_y, grid_x, 3] = height
+                output_tensor[batch_idx, grid_y, grid_x, 4] = confidence
+            # Check second box slot
+            elif output_tensor[batch_idx, grid_y, grid_x, 9] == 0:  # Second box available
+                output_tensor[batch_idx, grid_y, grid_x, 5] = cell_x
+                output_tensor[batch_idx, grid_y, grid_x, 6] = cell_y
+                output_tensor[batch_idx, grid_y, grid_x, 7] = width
+                output_tensor[batch_idx, grid_y, grid_x, 8] = height
+                output_tensor[batch_idx, grid_y, grid_x, 9] = confidence
+            # If both slots are occupied, skip (this shouldn't happen after NMS)
 
-    return torch.tensor(keep, dtype=torch.long)
+            # Set class probability (for single class, just set to 1.0)
+            if num_classes == 1:
+                output_tensor[batch_idx, grid_y, grid_x, 10] = 1.0
+            else:
+                # For multi-class, set the specific class
+                output_tensor[batch_idx, grid_y, grid_x, 10 + class_id] = 1.0
 
-
-def calculate_iou_nms(box1, box2):
-    """Calculate IoU for NMS (box format: [x1, y1, x2, y2])"""
-    # Calculate intersection
-    inter_x1 = torch.max(box1[:, 0], box2[:, 0])
-    inter_y1 = torch.max(box1[:, 1], box2[:, 1])
-    inter_x2 = torch.min(box1[:, 2], box2[:, 2])
-    inter_y2 = torch.min(box1[:, 3], box2[:, 3])
-
-    inter_area = torch.clamp(inter_x2 - inter_x1, min=0) * torch.clamp(inter_y2 - inter_y1, min=0)
-
-    # Calculate union
-    box1_area = (box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1])
-    box2_area = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
-    union_area = box1_area + box2_area - inter_area
-
-    return inter_area / (union_area + 1e-6)
+    return output_tensor

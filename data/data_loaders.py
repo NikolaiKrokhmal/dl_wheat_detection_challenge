@@ -2,7 +2,6 @@ import torch
 from .wheat_dataset import WheatDataset
 from torch.utils.data import random_split, DataLoader
 from .transforms import get_val_transforms, get_train_transforms
-from utils import collate_fn
 
 
 def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=42):
