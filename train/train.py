@@ -3,10 +3,10 @@ import torch
 from tqdm import tqdm
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from utils import decode_outputs
-from model import YOLOv1Loss
+from models import YOLOv1Loss
 
 
-def train(model, train_loader, val_loader,learning_rate, epochs=50, device='cuda'):
+def train(model, train_loader, val_loader,learning_rate, grid_size, epochs=50, device='cuda'):
     model.to(device)
 
     history = {
@@ -22,7 +22,7 @@ def train(model, train_loader, val_loader,learning_rate, epochs=50, device='cuda
     train_map_list = []
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = YOLOv1Loss(7, 2, 1)
+    criterion = YOLOv1Loss(grid_size, 2, 1)
 
     for epoch in range(epochs):
         model.train()

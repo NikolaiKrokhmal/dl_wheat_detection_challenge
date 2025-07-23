@@ -4,7 +4,7 @@ from torch.utils.data import random_split, DataLoader
 from .transforms import get_val_transforms, get_train_transforms
 
 
-def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=42):
+def get_all_dataloaders(data_dir, csv_file, grid_size, batch_size=16, val_split=0.2, seed=42):
 
     # Set seed for reproducibility
     torch.manual_seed(seed)
@@ -13,7 +13,8 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
     full_dataset = WheatDataset(
         data_dir=data_dir,
         csv_file=csv_file,
-        apply_mosaic=False,
+        apply_mosaic=True,
+        grid_size=grid_size,
         transforms=get_train_transforms()
     )
 
@@ -29,20 +30,6 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         generator=torch.Generator().manual_seed(seed)
     )
 
-    aug_full_dataset = WheatDataset(
-        data_dir=data_dir,
-        csv_file=csv_file,
-        apply_mosaic=True,
-        transforms=get_train_transforms()
-    )
-
-    # Perform split for augmented
-    aug_dataset, _ = random_split(
-        aug_full_dataset,
-        [train_size, val_size],
-        generator=torch.Generator().manual_seed(seed)
-    )
-
     # Apply different transforms to validation set
     val_dataset.dataset.transforms = get_val_transforms()
 
@@ -53,17 +40,6 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         shuffle=True,
         num_workers=4,
         pin_memory=True,
-        # collate_fn=collate_fn,
-        drop_last=True
-    )
-
-    aug_loader = DataLoader(
-        aug_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-        # collate_fn=collate_fn,
         drop_last=True
     )
 
@@ -73,8 +49,7 @@ def get_all_dataloaders(data_dir, csv_file, batch_size=16, val_split=0.2, seed=4
         shuffle=False,
         num_workers=4,
         pin_memory=True,
-        # collate_fn=collate_fn,
         drop_last=True
     )
 
-    return train_loader, aug_loader, val_loader
+    return train_loader, val_loader

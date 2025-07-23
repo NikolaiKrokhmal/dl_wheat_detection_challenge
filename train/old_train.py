@@ -3,7 +3,7 @@ import logging
 from tqdm import tqdm
 import numpy as np
 from utils import set_seed
-from model import YOLOv1Loss
+from models import YOLOv1Loss
 from pathlib import Path
 
 def evaluate_epoch_map(model, dataloader, device, confidence_threshold: float = 0.25,
@@ -12,7 +12,7 @@ def evaluate_epoch_map(model, dataloader, device, confidence_threshold: float = 
     Fast GPU-accelerated mAP evaluation
 
     Args:
-        model: PyTorch model (will be set to eval mode automatically)
+        model: PyTorch models (will be set to eval mode automatically)
         dataloader: DataLoader for the dataset
         device: Device to run evaluation on
         confidence_threshold: Minimum confidence for predictions
@@ -34,7 +34,7 @@ def evaluate_epoch_map(model, dataloader, device, confidence_threshold: float = 
             images = images.to(device)
             targets = targets.to(device)
 
-            # Get model predictions
+            # Get models predictions
             outputs = model(images)
 
 
@@ -132,7 +132,7 @@ def train_single_run(
         'val_mAP': []
     }
 
-    # Best model tracking
+    # Best models tracking
     best_val_loss = float('inf')
     patience = 10
     patience_counter = 0
@@ -231,11 +231,11 @@ def train_single_run(
 
         torch.save(checkpoint, save_dir / 'last.pt')
 
-        # Save best model
+        # Save best models
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(checkpoint, save_dir / 'best.pt')
-            logging.info(f'Best model saved with val loss: {best_val_loss:.4f}')
+            logging.info(f'Best models saved with val loss: {best_val_loss:.4f}')
             patience_counter = 0
         else:
             patience_counter += 1
@@ -245,7 +245,7 @@ def train_single_run(
             logging.info(f'Early stopping triggered after {epoch + 1} epochs')
             break
 
-    # Save final model and history
+    # Save final models and history
     torch.save(history, save_dir / 'history.pt')
 
     logging.info('Training completed!')

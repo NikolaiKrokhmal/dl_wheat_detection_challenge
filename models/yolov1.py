@@ -1,42 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torchvision import models
 from torchvision.ops import nms
 
 
-class FPNNeck(nn.Module):
-    def __init__(self, in_channels_list, out_channels):
-        super(FPNNeck, self).__init__()
-
-        # Lateral connections (1x1 convolutions)
-        self.lateral_convs = nn.ModuleList([
-            nn.Conv2d(in_channels, out_channels, 1)
-            for in_channels in in_channels_list
-        ])
-
-        # Top-down pathway (upsampling + smoothing)
-        self.fpn_convs = nn.ModuleList([
-            nn.Conv2d(out_channels, out_channels, 3, padding=1)
-            for _ in range(len(in_channels_list))
-        ])
-
-    def forward(self, features):
-        # features should be ordered from the highest resolution to lowest
-        laterals = [conv(feature) for feature, conv in zip(features, self.lateral_convs)]
-
-        # Top-down pathway
-        for i in range(len(laterals) - 1, 0, -1):
-            laterals[i - 1] += nn.functional.interpolate(
-                laterals[i], size=laterals[i - 1].shape[-2:], mode='nearest'
-            )
-
-        # Smoothing
-        outputs = [conv(lateral) for lateral, conv in zip(laterals, self.fpn_convs)]
-        return outputs
-
-
-class FPNYolo(nn.Module):
+class Yolov1(nn.Module):
     def __init__(self, grid_size, num_boxes, num_classes):
         super().__init__()
         self.grid_size = grid_size
@@ -45,22 +13,31 @@ class FPNYolo(nn.Module):
         self.output_size = num_boxes * 5 + num_classes
 
         # Load pretrained ResNet-18 as backbone (exclude last 2 layers which are not feature extractors)
-        resnet_pre = models.resnet18(weights = models.ResNet18_Weights.DEFAULT)
-        self.backbone_stages = nn.ModuleList([
-            nn.Sequential(resnet_pre.conv1, resnet_pre.bn1, resnet_pre.relu, resnet_pre.maxpool, resnet_pre.layer1),    # 64ch
-            resnet_pre.layer2,  # 128ch
-            resnet_pre.layer3,  # 256ch
-            resnet_pre.layer4  # 512ch
-        ])
+        resnet_pre = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        self.backbone = nn.Sequential(*list(resnet_pre.children())[:-2])
 
         # Freeze early layers for domain adaptation
-        for i in range(2):  # Freeze first 2 stages
-            for param in self.backbone_stages[i].parameters():
+        layers_to_freeze = list(self.backbone.children())[:6]  # First 6 layers
+        for layer in layers_to_freeze:
+            for param in layer.parameters():
                 param.requires_grad = False
 
-        # FPN neck
-        in_channels_list = [64, 128, 256, 512]  # ResNet-18 output channels
-        self.fpn = FPNNeck(in_channels_list, out_channels=256)
+        # adapt ResNet18 output for yolov1 detection head
+        self.adapter = nn.Sequential(
+            # Increase channels from 512 to 1024
+            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.1, inplace=True),
+
+            # Reduce spatial size from 14x14 to 7x7
+            nn.Conv2d(1024, 1024, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.1, inplace=True),
+
+            # Final conv layers (similar to original YOLOv1)
+            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
 
         # Detection head
         self.classifier = nn.Sequential(
@@ -73,25 +50,11 @@ class FPNYolo(nn.Module):
 
     def forward(self, x):
         """Forward pass through ResNet18 backbone + YOLOv1 head."""
-        # Extract features with ResNet18 backbone and save the outputs of individual layers for FPN
-        features = []
-        for stage in self.backbone_stages:
-            x = stage(x)
-            features.append(x)  # Collect [64ch, 128ch, 256ch, 512ch] outputs
+        # Extract features with ResNet18 backbone
+        features = self.backbone(x)  # (batch, 512, 14, 14)
 
-        fpn_features = self.fpn(features)  # input list of features from layers to pass in FPN
-
-        # Resize all to 7x7 and concatenate
-        target_size = (self.grid_size, self.grid_size)
-        resized_features = []
-        for feat in fpn_features:
-            if feat.shape[-2:] != target_size:
-                resized = F.interpolate(feat, size=target_size, mode='bilinear', align_corners=False)
-            else:
-                resized = feat
-            resized_features.append(resized)
-
-        fused_features = torch.cat(resized_features, dim=1)  # [B, 1024, 7, 7]
+        # Adapt to YOLOv1 requirements
+        features = self.adapter(features)  # (batch, 1024, 7, 7)
 
         # Get predictions from classifier
         predictions = self.classifier(features)

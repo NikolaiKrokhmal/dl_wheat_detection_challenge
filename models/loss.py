@@ -8,7 +8,7 @@ class YOLOv1Loss(nn.Module):
     YOLOv1 Loss function exactly as described in the paper.
     """
 
-    def __init__(self, grid_size=7, num_boxes=2, num_classes=1,
+    def __init__(self, grid_size, num_boxes=2, num_classes=1,
                  lambda_coord=5.0, lambda_noobj=0.5):
         super(YOLOv1Loss, self).__init__()
 
@@ -29,6 +29,9 @@ class YOLOv1Loss(nn.Module):
         Returns:
             Total loss (scalar)
         """
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        predictions = predictions.to(device)
+        targets = targets.to(device)
         batch_size = predictions.size(0)
 
         # Split predictions into components

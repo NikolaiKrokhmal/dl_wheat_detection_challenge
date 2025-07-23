@@ -20,7 +20,7 @@ class WheatDataset(Dataset):
     bbox format in CSV: [x_min, y_min, width, height] (Pascal VOC format)
     """
 
-    def __init__(self, data_dir, csv_file, apply_mosaic, transforms=None, img_size=448):
+    def __init__(self, data_dir, csv_file, apply_mosaic, grid_size, transforms=None, img_size=448):
         """
         Args:
             data_dir (str): Path to the data directory containing images
@@ -32,6 +32,7 @@ class WheatDataset(Dataset):
         self.img_size = img_size
         self.transforms = transforms
         self.apply_mosaic = apply_mosaic
+        self.grid_size = grid_size
 
         # Load annotations
         self.df = pd.read_csv(csv_file)
@@ -68,8 +69,7 @@ class WheatDataset(Dataset):
 
         for _, row in img_annotations.iterrows():
             bbox = row['bbox']  # [x_min, y_min, width, height]
-            x, y, w, h = bbox
-            boxes.append([x, y, w, h, 1])
+            boxes.append(bbox)
 
         # Convert to numpy arrays for albumentations
         boxes = np.array(boxes, dtype=np.float32)
@@ -87,16 +87,16 @@ class WheatDataset(Dataset):
             if boxes.size == 0:  # If empty
                 boxes = boxes.reshape((0, 4))  # Reshape to (0, 4)
 
-        grid_tensor = torch.zeros(7, 7, 11)
+        grid_tensor = torch.zeros(self.grid_size, self.grid_size, 11)
 
         # Normalize bboxes for YOLO
         for box in boxes:
-            x, y, w, h, c = box
+            x, y, w, h = box
 
             x_center = (x + w / 2)  # x_center
             y_center = (y + h / 2)  # y_center
 
-            cell_size = self.img_size / 7
+            cell_size = self.img_size / self.grid_size
 
             grid_x_index = int(x_center / cell_size)
             grid_y_index = int(y_center / cell_size)
@@ -107,9 +107,9 @@ class WheatDataset(Dataset):
             delta_h = h / self.img_size
 
             if not all(grid_tensor[grid_y_index, grid_x_index, :]):
-                grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_w, delta_h, c])
-                grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_w, delta_h, c])
-                grid_tensor[grid_y_index, grid_x_index, 11] = torch.tensor(1)
+                grid_tensor[grid_y_index, grid_x_index, 0:5] = torch.tensor([delta_x, delta_y, delta_w, delta_h, 1])
+                grid_tensor[grid_y_index, grid_x_index, 5:10] = torch.tensor([delta_x, delta_y, delta_w, delta_h, 1])
+                grid_tensor[grid_y_index, grid_x_index, 10] = torch.tensor(1)
 
         return image, grid_tensor
 
