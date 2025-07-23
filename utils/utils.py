@@ -178,5 +178,75 @@ def decode_target(target, S=7, img_size=448):
     }
 
 
+def extract_bboxes(predictions, conf_threshold=0.5, model_img_size=448, target_img_size=1024):
+    """
+    Extract bounding boxes from raw YOLOv1 predictions and scale to target image size
+    """
+    batch_size, S, _, _ = predictions.shape
+
+    # Calculate scaling factor
+    scale_factor = target_img_size / model_img_size  # 1024 / 448 = 2.286
+
+    all_boxes = {}
+
+    for batch_idx in range(batch_size):
+        boxes = []
+
+        for i in range(S):
+            for j in range(S):
+                cell_pred = predictions[batch_idx, i, j]
+
+                # Extract both boxes from this cell
+                box1 = cell_pred[:5]  # [x, y, w, h, conf]
+                box2 = cell_pred[5:10]  # [x, y, w, h, conf]
+                class_probs = cell_pred[10:]
+
+                class_conf, class_id = torch.max(class_probs, dim=0)
+
+                # Pick the box with higher confidence
+                conf1 = box1[4].item()
+                conf2 = box2[4].item()
+
+                if conf1 > conf2:
+                    best_box = box1
+                    best_conf = conf1
+                else:
+                    best_box = box2
+                    best_conf = conf2
+
+                # Only process if the best box passes threshold
+                if best_conf > conf_threshold:
+                    # Convert coordinates
+                    x_center = (j + best_box[0]) * model_img_size / S
+                    y_center = (i + best_box[1]) * model_img_size / S
+                    width = best_box[2].item() * model_img_size
+                    height = best_box[3].item() * model_img_size
+
+                    # Convert to corner format
+                    x1 = x_center - width / 2
+                    y1 = y_center - height / 2
+                    x2 = x_center + width / 2
+                    y2 = y_center + height / 2
+
+                    # Scale to target image size
+                    x1 *= scale_factor
+                    y1 *= scale_factor
+                    x2 *= scale_factor
+                    y2 *= scale_factor
+
+                    final_conf = best_conf * class_conf.item()
+
+                    boxes.append([
+                        x1, y1, x2, y2,
+                        final_conf,
+                        class_id.item()
+                    ])
+
+        all_boxes[f'{batch_idx}'] = boxes
+
+    return all_boxes
+
+
+
 if __name__ == '__main__':
     pass
