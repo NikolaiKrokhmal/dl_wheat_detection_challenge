@@ -1,85 +1,37 @@
+import os
 import torch
-import matplotlib.pyplot as plt
+import cv2
 import numpy as np
-from torchvision.ops import nms
+from utils import extract_bboxes, plot_bboxes
 
-def test(model, dataloader, device, conf_thresh=0.4, iou_thresh=0.5, num_classes=2, max_batches=5):
+
+def test(model, test_dir, conf_thresh=0.4):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.eval()
     model.to(device)
 
-    with torch.no_grad():
-        for i, (images, _) in enumerate(dataloader):
-            if i >= max_batches:
-                break
+    # ImageNet normalization values (RGB format)
+    imagenet_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-            images = images.to(device)
-            outputs = model(images)  # shape: [B, S, S, B*5 + C]
+    for image_name in os.listdir(test_dir):
+        image_path = os.path.join(test_dir, image_name)
+        image = cv2.imread(image_path)
 
-            for img_idx in range(images.shape[0]):
-                output = outputs[img_idx].cpu().numpy()
-                S = output.shape[0]
-                B = 2  # number of predicted boxes per cell
-                C = num_classes
+        resized_image = cv2.resize(image, (448, 448))
+        resized_image = resized_image.astype(np.float32) / 255.0
 
-                boxes = []
-                scores = []
-                labels = []
+        resized_image = (resized_image - imagenet_mean) / imagenet_std
 
-                for row in range(S):
-                    for col in range(S):
-                        for b in range(B):
-                            conf = output[row,col,b*5+4]
-                            if conf > conf_thresh:
-                                bx = output[row,col,b*5]
-                                by = output[row,col,b*5+1]
-                                bw = output[row,col,b*5+2]
-                                bh = output[row,col,b*5+3]
-                                class_probs = output[row,col,B*5:]
-                                class_idx = np.argmax(class_probs)
-                                class_conf = class_probs[class_idx] * conf
+        resized_image = resized_image.transpose(2, 0, 1)
 
-                                x = (col + bx) / S
-                                y = (row + by) / S
-                                w = bw
-                                h = bh
+        resized_image = np.expand_dims(resized_image, axis=0)
 
-                                x1 = x - w/2
-                                y1 = y - h/2
-                                x2 = x + w/2
-                                y2 = y + h/2
+        tensor_img = torch.from_numpy(resized_image).float()
+        tensor_img = tensor_img.to(device)
 
-                                boxes.append([x1, y1, x2, y2])
-                                scores.append(class_conf)
-                                labels.append(class_idx)
+        with torch.no_grad():
+            raw_pred = model.predict(tensor_img)
+            boxes = extract_bboxes(raw_pred, conf_threshold=conf_thresh, model_img_size=448, target_img_size=1024)
 
-                if len(boxes) == 0:
-                    continue
-
-                boxes = torch.tensor(boxes)
-                scores = torch.tensor(scores)
-                labels = torch.tensor(labels)
-
-                keep = nms(boxes, scores, iou_thresh)
-                boxes = boxes[keep]
-                scores = scores[keep]
-                labels = labels[keep]
-
-                # Plotting
-                img_np = images[img_idx].permute(1,2,0).cpu().numpy()
-                plt.figure(figsize=(6,6))
-                plt.imshow(img_np)
-                ax = plt.gca()
-
-                for box, score, label in zip(boxes, scores, labels):
-                    x1,y1,x2,y2 = box
-                    ax.add_patch(plt.Rectangle((x1*img_np.shape[1], y1*img_np.shape[0]),
-                                               (x2-x1)*img_np.shape[1],
-                                               (y2-y1)*img_np.shape[0],
-                                               edgecolor='lime', facecolor='none', linewidth=2))
-                    ax.text(x1*img_np.shape[1], y1*img_np.shape[0]-5,
-                            f"Class {label}, {score:.2f}",
-                            color='lime', fontsize=8, backgroundcolor='black')
-
-                plt.axis('off')
-                plt.title("YOLOv1 Predictions (no GT)")
-                plt.show()
+        plot_bboxes(image, boxes)

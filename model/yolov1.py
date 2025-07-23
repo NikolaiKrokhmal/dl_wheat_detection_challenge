@@ -13,7 +13,7 @@ class Yolov1(nn.Module):
         self.output_size = num_boxes * 5 + num_classes
 
         # Load pretrained ResNet-18 as backbone (exclude last 2 layers which are not feature extractors)
-        resnet_pre = models.resnet18(models.ResNet18_Weights.DEFAULT)
+        resnet_pre = models.resnet18(weights = models.ResNet18_Weights.DEFAULT)
         self.backbone = nn.Sequential(*list(resnet_pre.children())[:-2])
 
         # Freeze early layers for domain adaptation

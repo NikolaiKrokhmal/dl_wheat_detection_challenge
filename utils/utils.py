@@ -21,20 +21,10 @@ def plot_bboxes(image, bboxes, title="Image with Bboxes"):
     ax.set_title(title)
 
     for bbox in bboxes:
-        # YOLO format: [class, x_center_norm, y_center_norm, width_norm, height_norm]
-        class_id, x_center_norm, y_center_norm, width_norm, height_norm = bbox
-
-        # Convert normalized coordinates back to pixel coordinates
-        img_height, img_width = image.shape[:2]  # Get actual image dimensions
-
-        x_center = x_center_norm * img_width
-        y_center = y_center_norm * img_height
-        width = width_norm * img_width
-        height = height_norm * img_height
-
-        # Convert to top-left corner coordinates for Rectangle
-        x_min = x_center - width / 2
-        y_min = y_center - height / 2
+        # format: [x_min y_min, x_max, y_max]
+        x_min, y_min, x_max, y_max, _, _ = bbox
+        width = x_max - x_min
+        height = y_max - y_min
 
         rect = patches.Rectangle((x_min, y_min), width, height,
                                  linewidth=2, edgecolor='red', facecolor='none')
@@ -64,6 +54,7 @@ def set_seed(seed):
     # Make PyTorch deterministic (slower but more reproducible)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
 
 def calculate_iou(box1, box2):
     """Calculate IoU between two sets of boxes."""
@@ -95,6 +86,7 @@ def calculate_iou(box1, box2):
     iou = inter_area / (union_area + 1e-6)
     return iou
 
+
 def decode_outputs(output, S=7, B=2, C=1, img_size=448, conf_thresh=0.25):
     boxes = []
     scores = []
@@ -105,11 +97,11 @@ def decode_outputs(output, S=7, B=2, C=1, img_size=448, conf_thresh=0.25):
         for col in range(S):
             for b in range(B):
                 # Extract box info
-                bx = output[row,col,b*5]
-                by = output[row,col,b*5+1]
-                bw = output[row,col,b*5+2]
-                bh = output[row,col,b*5+3]
-                conf = output[row,col,b*5+4]
+                bx = output[row, col, b*5]
+                by = output[row, col, b*5+1]
+                bw = output[row, col, b*5+2]
+                bh = output[row, col, b*5+3]
+                conf = output[row, col, b*5+4]
 
                 # CLASS SCORE: last element in the 11-dim vector
                 class_score = output[row, col, B * 5]  # index 10
@@ -132,7 +124,7 @@ def decode_outputs(output, S=7, B=2, C=1, img_size=448, conf_thresh=0.25):
                 # x2 = x_center + w/2
                 # y2 = y_center + h/2
 
-                boxes.append([x_center,y_center,w,h])
+                boxes.append([x_center, y_center, w, h])
                 scores.append(conf.item())
                 labels.append(1)  # Only 1 class
 
@@ -142,6 +134,7 @@ def decode_outputs(output, S=7, B=2, C=1, img_size=448, conf_thresh=0.25):
         "labels": torch.tensor(labels, dtype=torch.int64)
     }
 
+
 def decode_target(target, S=7, img_size=448):
     boxes = []
     labels = []
@@ -150,14 +143,14 @@ def decode_target(target, S=7, img_size=448):
 
     for row in range(S):
         for col in range(S):
-            obj = target[row,col,4]  # confidence indicator
+            obj = target[row, col, 4]  # confidence indicator
             if obj == 0:
                 continue
 
-            bx = target[row,col,0]
-            by = target[row,col,1]
-            bw = target[row,col,2]
-            bh = target[row,col,3]
+            bx = target[row, col, 0]
+            by = target[row, col, 1]
+            bw = target[row, col, 2]
+            bh = target[row, col, 3]
 
             x_center = (col + bx) * cell_size
             y_center = (row + by) * cell_size
@@ -169,7 +162,7 @@ def decode_target(target, S=7, img_size=448):
             x2 = x_center + w / 2
             y2 = y_center + h / 2
 
-            boxes.append([x1,y1,x2,y2])
+            boxes.append([x1, y1, x2, y2])
             labels.append(0)  # Only 1 class
 
     return {
@@ -178,7 +171,7 @@ def decode_target(target, S=7, img_size=448):
     }
 
 
-def extract_bboxes(predictions, conf_threshold=0.5, model_img_size=448, target_img_size=1024):
+def extract_bboxes(predictions, conf_threshold=0.25, model_img_size=448, target_img_size=1024):
     """
     Extract bounding boxes from raw YOLOv1 predictions and scale to target image size
     """
@@ -187,8 +180,7 @@ def extract_bboxes(predictions, conf_threshold=0.5, model_img_size=448, target_i
     # Calculate scaling factor
     scale_factor = target_img_size / model_img_size  # 1024 / 448 = 2.286
 
-    all_boxes = {}
-
+    boxes = []
     for batch_idx in range(batch_size):
         boxes = []
 
@@ -237,15 +229,12 @@ def extract_bboxes(predictions, conf_threshold=0.5, model_img_size=448, target_i
                     final_conf = best_conf * class_conf.item()
 
                     boxes.append([
-                        x1, y1, x2, y2,
+                        x1.item(), y1.item(), x2.item(), y2.item(),
                         final_conf,
                         class_id.item()
                     ])
 
-        all_boxes[f'{batch_idx}'] = boxes
-
-    return all_boxes
-
+    return boxes
 
 
 if __name__ == '__main__':

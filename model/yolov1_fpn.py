@@ -45,7 +45,7 @@ class FPNYolo(nn.Module):
         self.output_size = num_boxes * 5 + num_classes
 
         # Load pretrained ResNet-18 as backbone (exclude last 2 layers which are not feature extractors)
-        resnet_pre = models.resnet18(models.ResNet18_Weights.DEFAULT)
+        resnet_pre = models.resnet18(weights = models.ResNet18_Weights.DEFAULT)
         self.backbone_stages = nn.ModuleList([
             nn.Sequential(resnet_pre.conv1, resnet_pre.bn1, resnet_pre.relu, resnet_pre.maxpool, resnet_pre.layer1),    # 64ch
             resnet_pre.layer2,  # 128ch
