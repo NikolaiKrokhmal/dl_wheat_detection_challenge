@@ -20,7 +20,7 @@ if __name__ == "__main__":
     train_loader, val_loader = get_all_dataloaders(
         data_dir=data_dir,
         csv_file=csv_file,
-        grid_size=8,
+        grid_size=7,
         batch_size=batch_size,
         val_split=0.2,
         seed=SEED

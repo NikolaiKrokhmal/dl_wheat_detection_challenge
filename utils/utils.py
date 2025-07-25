@@ -237,5 +237,87 @@ def extract_bboxes(predictions, conf_threshold=0.25, model_img_size=448, target_
     return boxes
 
 
+def analyze_multi_run_training(list_of_histories, model_type):
+    """
+    Analyze training results from multiple runs with different seeds
+
+    Args:
+        list_of_histories: List of history dictionaries from multiple training runs
+
+    Returns:
+        Dictionary containing mean trajectories and standard deviations for:
+        - train_loss, val_loss, train_mAP, val_mAP
+    """
+
+    # unpack results, all List[run1, run2, run3]
+    train_losses = []
+    val_losses = []
+    train_mAPs = []
+    val_mAPs = []
+    for hist in list_of_histories:
+        train_losses.append(hist['train_loss'])
+        val_losses.append(hist['val_loss'])
+        train_mAPs.append(hist['train_mAP'])
+        val_mAPs.append(hist['val_mAP'])
+
+    required_metrics = ['train_loss', 'val_loss', 'train_mAP', 'val_mAP']
+
+    mean_train_losses = np.asarray(train_losses).mean(axis=0).flatten()
+    mean_val_losses = np.asarray(val_losses).mean(axis=0).flatten()
+    mean_train_mAPs = np.asarray(train_mAPs).mean(axis=0).flatten()
+    mean_val_mAPs = np.asarray(val_mAPs).mean(axis=0).flatten()
+
+    std_mean_train_loss = np.asarray(train_losses).std(axis=0).mean()
+    std_mean_val_loss = np.asarray(val_losses).std(axis=0).mean()
+    std_mean_train_mAPs = np.asarray(train_mAPs).std(axis=0).mean()
+    std_mean_val_mAPs = np.asarray(val_mAPs).std(axis=0).mean()
+
+    mean_result_list = [mean_train_losses, mean_val_losses, mean_train_mAPs, mean_val_mAPs]
+
+    # plot the results
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 8))
+    loss_epochs = np.arange(len(mean_train_losses))
+    mAP_epochs = np.arange(0, len(mean_train_losses), 5)
+
+    axes[0].plot(loss_epochs, mean_train_losses, 'b-', label='Mean Training Loss')
+    axes[0].plot(mAP_epochs, mean_val_losses, 'r-', label='Mean Validation Loss')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Mean Loss')
+    axes[0].set_title(f'Mean Training and Validation Loss - {model_type}')
+    axes[0].text(0, 0, f'Train avg std: {std_mean_train_loss:.4f} \nVal avg std: {std_mean_val_loss:.4f}',
+                 transform=axes[0].transAxes, verticalalignment='bottom')
+    axes[0].legend()
+    axes[0].grid(True)
+
+    axes[1].plot(mAP_epochs, mean_train_mAPs, 'b-', label='Mean Training mAP')
+    axes[1].plot(mAP_epochs, mean_val_mAPs, 'r-', label='Mean Validation mAP')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Mean mAP')
+    axes[1].set_title(f'Mean Training and Validation mAP - {model_type}')
+    axes[1].text(0.6, 0, f'Train avg std: {std_mean_train_mAPs:.4f} \nVal avg std: {std_mean_val_mAPs:.4f}',
+                 transform=axes[1].transAxes, verticalalignment='bottom')
+    axes[1].legend()
+    axes[1].grid(True)
+
+    results = {}
+
+    for metric, result in zip(required_metrics, mean_result_list):
+        results[metric] = result
+
+    results['Mean Training Loss std'] = std_mean_train_loss
+    results['Mean Validation mAP std'] = std_mean_val_loss
+    results['Mean Training mAP std'] = std_mean_train_mAPs
+    results['Mean Validation mAP std'] = std_mean_val_mAPs
+
+    return results
+
+
 if __name__ == '__main__':
-    pass
+    import os
+    os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+    import pickle
+    path = r'C:\Niko\Uni\Masters\courses\dl\Project\wheat_detection_challenge_project\dl_wheat_detection_challenge\runs\fpn_s_7_list_of_hist.pkl'
+    with open(path, 'rb') as file:
+        list_of_histories = pickle.load(file)
+    analyze_multi_run_training(list_of_histories, 'Yolov1_FPN_S7')
+    plt.show()

@@ -25,6 +25,8 @@ class WheatDataset(Dataset):
         Args:
             data_dir (str): Path to the data directory containing images
             csv_file (str): Path to CSV file with annotations
+            apply_mosaic(Bool): apply mosaic augmentation or not
+            grid_size(int): set the grid size for anchor generation
             transforms (albumentations.Compose): Augmentation pipeline
             img_size (int): Target image size for resizing
         """
