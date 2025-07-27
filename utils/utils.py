@@ -316,8 +316,8 @@ if __name__ == '__main__':
     import os
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     import pickle
-    path = r'C:\Niko\Uni\Masters\courses\dl\Project\wheat_detection_challenge_project\dl_wheat_detection_challenge\runs\fpn_s_7_list_of_hist.pkl'
+    path = r'C:\Niko\Uni\Masters\courses\dl\Project\wheat_detection_challenge_project\dl_wheat_detection_challenge\runs\fpn_s_14_list_of_hist.pkl'
     with open(path, 'rb') as file:
         list_of_histories = pickle.load(file)
-    analyze_multi_run_training(list_of_histories, 'Yolov1_FPN_S7')
+    analyze_multi_run_training(list_of_histories, 'Yolov1_FPN_S14')
     plt.show()
