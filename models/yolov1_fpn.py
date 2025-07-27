@@ -91,7 +91,7 @@ class FPNYolo(nn.Module):
                 resized = feat
             resized_features.append(resized)
 
-        fused_features = torch.cat(resized_features, dim=1)  # [B, 1024, 7, 7]
+        fused_features = torch.cat(resized_features, dim=1)  # [B, 1024, S, S]
 
         # Get predictions from classifier
         predictions = self.classifier(fused_features)
@@ -176,7 +176,7 @@ def post_process_predictions(predictions, conf_threshold=0.5, nms_threshold=0.5)
 
         all_detections.append(final_detections)
 
-    return detections_to_tensor(all_detections, batch_size)
+    return detections_to_tensor(all_detections, batch_size, S)
 
 
 def apply_nms(boxes, scores, iou_threshold=0.5):

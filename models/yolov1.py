@@ -139,7 +139,7 @@ def post_process_predictions(predictions, conf_threshold=0.5, nms_threshold=0.5)
 
         all_detections.append(final_detections)
 
-    return detections_to_tensor(all_detections, batch_size)
+    return detections_to_tensor(all_detections, batch_size, S)
 
 
 def apply_nms(boxes, scores, iou_threshold=0.5):
@@ -161,7 +161,7 @@ def detections_to_tensor(all_detections, batch_size, grid_size=7, num_classes=1)
         tensor: Shape [batch_size, grid_size, grid_size, 2*5 + num_classes]
     """
     # Initialize output tensor
-    output_tensor = torch.zeros(batch_size, grid_size, grid_size, 2 * 5 + num_classes)
+    output_tensor = torch.zeros(batch_size, grid_size, grid_size, 2*5 + num_classes)
 
     for batch_idx, detections in enumerate(all_detections):
         for detection in detections:
@@ -174,8 +174,8 @@ def detections_to_tensor(all_detections, batch_size, grid_size=7, num_classes=1)
             x1, y1, x2, y2 = bbox
             x_center = (x1 + x2) / 2  # Center x in [0,1]
             y_center = (y1 + y2) / 2  # Center y in [0,1]
-            width = x2 - x1  # Width in [0,1]
-            height = y2 - y1  # Height in [0,1]
+            width = x2 - x1           # Width in [0,1]
+            height = y2 - y1          # Height in [0,1]
 
             # Determine which grid cell this detection belongs to
             grid_x = int(x_center * grid_size)
