@@ -40,10 +40,12 @@ if __name__ == "__main__":
     #                                device=device,
     #                                save_dir='runs')
 
-    # Load and analyze results
+    # # Running the model on the test images
     # t_yolov1 = Yolov1(7,2,1)
     # t_yolov1.load_state_dict(torch.load('runs/yolov1_s_7__seed_7.pt'))
     # test(t_yolov1, test_dir, conf_thresh=0.25)
+
+    # # Plotting training graphs
     # hist_path = 'runs/yolov1_s_7_list_of_hist.pkl'
     # with open(hist_path, 'rb') as file:
     #     data = pickle.load(file)
@@ -71,10 +73,12 @@ if __name__ == "__main__":
     #                             device=device,
     #                             save_dir='runs')
 
-    # Load and analyze results
+    # # Running the model on the test images
     # t_fpn = FPNYolo(7, 2, 1)
     # t_fpn.load_state_dict(torch.load('runs/fpn_s_7__seed_7.pt'))
     # test(t_fpn, test_dir, conf_thresh=0.25)
+
+    # # Plotting training graphs
     # hist_path = 'runs/fpn_s_7_list_of_hist.pkl'
     # with open(hist_path, 'rb') as file:
     #     data = pickle.load(file)
@@ -103,10 +107,12 @@ if __name__ == "__main__":
     #                             device=device,
     #                             save_dir='runs')
 
-    # Load and analyze results
+    # # Running the model on the test images
     # t_fpn_10 = FPNYolo(10, 2, 1)
     # t_fpn_10.load_state_dict(torch.load('runs/fpn_s_10__seed_7.pt'))
     # test(t_fpn_10, test_dir, conf_thresh=0.25)
+
+    # # Plotting training graphs
     # hist_path = 'runs/fpn_s_10_list_of_hist.pkl'
     # with open(hist_path, 'rb') as file:
     #     data = pickle.load(file)
@@ -136,12 +142,17 @@ if __name__ == "__main__":
     #                             device=device,
     #                             save_dir='runs')
 
-    # Load and analyze results
+    # # Running the model on the test images
     # t_fpn_14 = FPNYolo(14, 2, 1)
     # t_fpn_14.load_state_dict(torch.load('runs/fpn_s_14__seed_7.pt'))
     # test(t_fpn_14, test_dir, conf_thresh=0.25)
+
+    # # Plotting training graphs
     # hist_path = 'runs/fpn_s_14_list_of_hist.pkl'
     # with open(hist_path, 'rb') as file:
     #     data = pickle.load(file)
     #     analyze_multi_run_training(data, 'fpn yolov1 s 14')
+    #
+
+
 

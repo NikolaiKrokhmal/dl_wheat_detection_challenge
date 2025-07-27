@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import patches
 import random
+import os
 
 
 def plot_bboxes(image, bboxes, title="Image with Bboxes"):
